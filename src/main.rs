@@ -2,17 +2,20 @@ use std::env;
 use std::fs;
 use std::io;
 use std::io::Read;
+use rand::Rng;
 
 fn main() {
     let mut machine = Chip8::init();
     let args: Vec<String> = env::args().collect();
 
-    machine.load_rom(&args[1])?;
+    machine.load_rom(&args[1]);
     machine.show_memory();
 }
 
 // program consts
 const PROGRAM_START_ADDRESS: usize = 0x200;
+const SCREEN_WIDTH: usize = 64;
+const SCREEN_HEIGHT: usize = 32;
 const FONT_SET_SIZE: usize = 80;
 const FONT_SET_START_ADDRESS: usize = 0x50;
 const FONT_SET: [u8; FONT_SET_SIZE] = [
@@ -44,7 +47,7 @@ struct Chip8 {
     delay_timer: u8,
     sound_timer: u8,
     keypad: [u8; 16],
-    video: [u32; 64 * 32],
+    video: [u32; SCREEN_WIDTH * SCREEN_HEIGHT],
     opcode: u16
 }
 
@@ -60,7 +63,7 @@ impl Chip8 {
             delay_timer: 0,
             sound_timer: 0,
             keypad: [0; 16],
-            video: [0; 64 * 32],
+            video: [0; SCREEN_WIDTH * SCREEN_HEIGHT],
             opcode: 0
         };
 
@@ -103,5 +106,61 @@ impl Chip8 {
         }
 
         Ok(())
+    }
+
+    fn get_random_number() -> u8 {
+        rand::thread_rng().gen_range(0, 256) as u8
+    }
+}
+
+// opcode implementation
+impl Chip8 {
+    // CLS
+    // clear screen
+    fn op_00e0(&mut self) {
+        self.video = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
+    }
+
+    // RET
+    // pop address off stack and return to it
+    fn op_00ee(&mut self) {
+        self.sp -= 1;
+        self.pc = self.stack[self.sp as usize];
+    }
+
+    // JP addr
+    // jump to addr
+    fn op_1nnn(&mut self) {
+        let address = self.opcode & 0xFFF;
+        self.pc = address;
+    }
+
+    // CALL addr
+    // store next pc on stack and jump to addr
+    fn op_2nnn(&mut self) {
+        let address = self.opcode & 0xFFF;
+        self.stack[self.sp as usize] = self.pc;
+        self.sp += 1;
+        self.pc = address;
+    }
+
+    // SE Vx, kk
+    // skip next instruction if Vx == kk
+    fn op_3xkk(&mut self) {
+        let vx = (self.opcode & 0x0F00) >> 8;
+        let kk = (self.opcode & 0x00FF) as u8;
+        if self.registers[vx as usize] == kk {
+            self.pc += 2;
+        }
+    }
+
+    // SNE Vx, kk
+    // skip next instruction if Vx != kk
+    fn op_4xkk(&mut self) {
+        let vx = (self.opcode & 0x0F00) >> 8;
+        let kk = (self.opcode & 0x00FF) as u8;
+        if self.registers[vx as usize] != kk {
+            self.pc += 2;
+        }
     }
 }
