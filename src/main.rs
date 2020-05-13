@@ -3,6 +3,7 @@ use std::fs;
 use std::io;
 use std::io::Read;
 use rand::Rng;
+use std::env::join_paths;
 
 fn main() {
     let mut machine = Chip8::init();
@@ -109,7 +110,25 @@ impl Chip8 {
     }
 
     fn get_random_number() -> u8 {
-        rand::thread_rng().gen_range(0, 256) as u8
+        return rand::thread_rng().gen_range(0, 256) as u8
+    }
+
+    fn get_addr(val: u16) -> u16 {
+        return val & 0xFFF;
+    }
+
+    fn get_x_kk(val: u16) -> (u8, u8) {
+        let x = ((val & 0x0F00) >> 8) as u8;
+        let kk = (val & 0x00FF) as u8;
+
+        return (x, kk)
+    }
+
+    fn get_x_y(val: u16) -> (u8, u8) {
+        let x = ((val & 0x0F00) >> 8) as u8;
+        let y = ((val & 0x00F0) >> 4) as u8;
+
+        return (x, y)
     }
 }
 
@@ -131,14 +150,14 @@ impl Chip8 {
     // JP addr
     // jump to addr
     fn op_1nnn(&mut self) {
-        let address = self.opcode & 0xFFF;
+        let address = Chip8::get_addr(self.opcode);
         self.pc = address;
     }
 
     // CALL addr
     // store next pc on stack and jump to addr
     fn op_2nnn(&mut self) {
-        let address = self.opcode & 0xFFF;
+        let address = Chip8::get_addr(self.opcode);
         self.stack[self.sp as usize] = self.pc;
         self.sp += 1;
         self.pc = address;
@@ -147,8 +166,7 @@ impl Chip8 {
     // SE Vx, kk
     // skip next instruction if Vx == kk
     fn op_3xkk(&mut self) {
-        let vx = (self.opcode & 0x0F00) >> 8;
-        let kk = (self.opcode & 0x00FF) as u8;
+        let (vx, kk) = Chip8::get_x_kk(self.opcode);
         if self.registers[vx as usize] == kk {
             self.pc += 2;
         }
@@ -157,10 +175,75 @@ impl Chip8 {
     // SNE Vx, kk
     // skip next instruction if Vx != kk
     fn op_4xkk(&mut self) {
-        let vx = (self.opcode & 0x0F00) >> 8;
-        let kk = (self.opcode & 0x00FF) as u8;
+        let (vx, kk) = Chip8::get_x_kk(self.opcode);
         if self.registers[vx as usize] != kk {
             self.pc += 2;
         }
+    }
+
+    // SE Vx, Vy
+    // skip next instruction if Vx == Vy
+    fn op_5xy0(&mut self) {
+        let (vx, vy) = Chip8::get_x_y(self.opcode);
+        if self.registers[vx as usize] == self.registers[vy as usize] {
+            self.pc += 2;
+        }
+    }
+
+    // LD Vx, kk
+    // load kk into Vx
+    fn op_6xkk(&mut self) {
+        let (vx, kk) = Chip8::get_x_kk(self.opcode);
+        self.registers[vx as usize] = kk;
+    }
+
+    // ADD Vx, kk
+    // add kk to Vx
+    fn op_7xkk(&mut self) {
+        let (vx, kk) = Chip8::get_x_kk(self.opcode);
+        self.registers[vx as usize] += kk;
+    }
+
+    // LD Vx, Vy
+    // load Vy into Vx
+    fn op_8xy0(&mut self) {
+        let (vx, vy) = Chip8::get_x_y(self.opcode);
+        self.registers[vx as usize] = self.registers[vy as usize];
+    }
+
+    // OR Vx, Vy
+    // Vx = Vx OR Vy
+    fn op_8xy1(&mut self) {
+        let (vx, vy) = Chip8::get_x_y(self.opcode);
+        self.registers[vx as usize] |= self.registers[vy as usize];
+    }
+
+    // AND Vx, Vy
+    // Vx = Vx AND Vy
+    fn op_8xy2(&mut self) {
+        let (vx, vy) = Chip8::get_x_y(self.opcode);
+        self.registers[vx as usize] &= self.registers[vy as usize];
+    }
+
+    // XOR Vx, Vy
+    // Vx = Vx XOR Vy
+    fn op_8xy3(&mut self) {
+        let (vx, vy) = Chip8::get_x_y(self.opcode);
+        self.registers[vx as usize] ^= self.registers[vy as usize];
+    }
+
+    // ADD Vx, Vy
+    // add Vy to Vx, set VF to carry
+    fn op_8xy4(&mut self) {
+        let (vx, vy) = Chip8::get_x_y(self.opcode) as (u16, u16);
+        let result = self.registers[vx as usize] + self.registers[vy as usize];
+
+        if result > 0xFF { // if there is overflow...
+            self.registers[0xF] = 1; // ...set carry bit to 1...
+        } else {
+            self.registers[0xF] = 0; // ...else set to 0
+        }
+
+        self.registers[vx as usize] = result & 0xFF;
     }
 }
