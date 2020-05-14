@@ -125,6 +125,12 @@ impl Chip8 {
         return (x, kk)
     }
 
+    fn get_x(&self) -> u8 {
+        let x = ((self.opcode & 0x0F00) >> 8) as u8;
+
+        return x
+    }
+
     fn get_x_y(&self) -> (u8, u8) {
         let x = ((self.opcode & 0x0F00) >> 8) as u8;
         let y = ((self.opcode & 0x00F0) >> 4) as u8;
@@ -271,7 +277,7 @@ impl Chip8 {
     // SHR Vx
     // shift Vx right one bit. store overflow in VF
     fn op_8xy6(&mut self) {
-        let (vx, _) = self.get_x_y();
+        let vx = self.get_x();
         self.registers[0xF] = self.registers[vx as usize] & 0b00000001;
         self.registers[vx as usize] >>= 1;
     }
@@ -293,7 +299,7 @@ impl Chip8 {
     // SHL Vx {, Vy}
     // shift Vx left one bit. store overflow in VF
     fn op_8xye(&mut self) {
-        let (vx, _) = self.get_x_y();
+        let vx = self.get_x();
         self.registers[0xF] = (self.registers[vx as usize] & 0b10000000) >> 7;
         self.registers[vx as usize] <<= 1;
     }
@@ -356,6 +362,98 @@ impl Chip8 {
                     *screen_pixel ^= 0xFFFFFFFF;
                 }
             }
+        }
+    }
+
+    // SKP Vx
+    // skip next instruction if key code stored in Vx is pressed
+    fn op_ex9e(&mut self) {
+        // TODO: implement
+    }
+
+    // SKNP Vx
+    // skip next instruction if key code stored in Vx is not pressed
+    fn op_exa1(&mut self) {
+        // TODO: implement
+    }
+
+    // LD Vx, DT
+    // set Vx to delay timer value
+    fn op_fx07(&mut self) {
+        let vx = self.get_x();
+        self.registers[vx as usize] = self.delay_timer;
+    }
+
+    // LD Vx, K
+    // wait for key press, store key code in Vx
+    fn op_fx0a(&mut self) {
+        let vx = self.get_x();
+        // TODO: figure out how keypad values are stored, then implement
+    }
+
+    // LD DT, Vx
+    // set delay timer = Vx
+    fn op_fx15(&mut self) {
+        let vx = self.get_x();
+        self.delay_timer = self.registers[vx as usize];
+    }
+
+    // LD ST, Vx
+    // set sound timer = Vx
+    fn op_fx18(&mut self) {
+        let vx = self.get_x();
+        self.sound_timer = self.registers[vx as usize];
+    }
+
+    // LD ADD I, Vx
+    // add Vx to I
+    fn op_fx1e(&mut self) {
+        let vx = self.get_x();
+        self.index += self.registers[vx as usize] as u16;
+    }
+
+    // LD F, Vx
+    // set I = location of sprite for digit Vx
+    fn op_fx29(&mut self) {
+        let vx = self.get_x();
+        let digit = self.registers[vx as usize];
+
+        self.index = FONT_SET_START_ADDRESS as u16 + (5 * digit) as u16;
+    }
+
+    // LD B, Vx
+    // store BCD representation of Vx in I, I + 1, and I + 2
+    fn op_fx33(&mut self) {
+        let vx = self.get_x();
+        let mut value = self.registers[vx as usize];
+
+        // ones place
+        self.memory[(self.index + 2) as usize] = value % 10;
+        value /= 10;
+
+        // tens place
+        self.memory[(self.index + 1) as usize] = value % 10;
+        value /= 10;
+
+        // hundreds place
+        self.memory[(self.index) as usize] = value % 10;
+    }
+
+    // LD [I], Vx
+    // store registers V0 -> Vx in memory starting at index
+    fn op_fx55(&mut self) {
+        let vx = self.get_x();
+        for i in 0..vx {
+            self.memory[(self.index + i as u16) as usize] = self.registers[i as usize];
+        }
+    }
+
+    // LD Vx, [I]
+    // read in values to V0 -> Vx starting a index in memory
+    fn op_fx65(&mut self) {
+        let vx = self.get_x();
+        for i in 0..vx {
+            self.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
         }
     }
 }
