@@ -145,6 +145,76 @@ impl Chip8 {
 
         return (x, y, n)
     }
+
+    fn get_nibbles(&self) -> (u8, u8, u8, u8) {
+        let n1 = ((self.opcode & 0xF000) >> 12) as u8;
+        let n2 = ((self.opcode & 0x0F00) >> 8) as u8;
+        let n3 = ((self.opcode & 0x00F0) >> 4) as u8;
+        let n4 = (self.opcode & 0x000F) as u8;
+
+        return (n1, n2, n3, n4)
+    }
+
+    fn cycle(&mut self) {
+        // load next instruction from memory
+        let first_byte = (self.memory[self.pc as usize] << 8) as u16;
+        let second_byte = self.memory[(self.pc + 1) as usize] as u16;
+        self.opcode = first_byte | second_byte;
+
+        // instruction execution time
+        self.pc += 2;
+        self.execute_instruction();
+
+        // decrement the timers
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
+        }
+    }
+
+    fn execute_instruction(&mut self) {
+        let (n1, n2, n3, n4) = self.get_nibbles();
+        match (n1, n2, n3, n4) {
+            (0x0, 0x0, 0xE, 0x0) => self.op_00e0(),
+            (0x0, 0x0, 0xE, 0xE) => self.op_00ee(),
+            (0x1,   _,   _,   _) => self.op_1nnn(),
+            (0x2,   _,   _,   _) => self.op_2nnn(),
+            (0x3,   _,   _,   _) => self.op_3xkk(),
+            (0x4,   _,   _,   _) => self.op_4xkk(),
+            (0x5,   _,   _, 0x0) => self.op_5xy0(),
+            (0x6,   _,   _,   _) => self.op_6xkk(),
+            (0x7,   _,   _,   _) => self.op_7xkk(),
+            (0x8,   _,   _, 0x0) => self.op_8xy0(),
+            (0x8,   _,   _, 0x1) => self.op_8xy1(),
+            (0x8,   _,   _, 0x2) => self.op_8xy2(),
+            (0x8,   _,   _, 0x3) => self.op_8xy3(),
+            (0x8,   _,   _, 0x4) => self.op_8xy4(),
+            (0x8,   _,   _, 0x5) => self.op_8xy5(),
+            (0x8,   _,   _, 0x6) => self.op_8xy6(),
+            (0x8,   _,   _, 0x7) => self.op_8xy7(),
+            (0x8,   _,   _, 0xE) => self.op_8xye(),
+            (0x9,   _,   _, 0x0) => self.op_9xy0(),
+            (0xA,   _,   _,   _) => self.op_annn(),
+            (0xB,   _,   _,   _) => self.op_bnnn(),
+            (0xC,   _,   _,   _) => self.op_cxkk(),
+            (0xD,   _,   _,   _) => self.op_dxyn(),
+            (0xE,   _, 0x9, 0xE) => self.op_ex9e(),
+            (0xE,   _, 0xA, 0x1) => self.op_exa1(),
+            (0xF,   _, 0x0, 0x7) => self.op_fx07(),
+            (0xF,   _, 0x0, 0xA) => self.op_fx0a(),
+            (0xF,   _, 0x1, 0x5) => self.op_fx15(),
+            (0xF,   _, 0x1, 0x8) => self.op_fx18(),
+            (0xF,   _, 0x1, 0xE) => self.op_fx1e(),
+            (0xF,   _, 0x2, 0x9) => self.op_fx29(),
+            (0xF,   _, 0x3, 0x3) => self.op_fx33(),
+            (0xF,   _, 0x5, 0x5) => self.op_fx55(),
+            (0xF,   _, 0x6, 0x5) => self.op_fx65(),
+            (  _,   _,   _,   _) => println!("instruction not recognised: {}", self.opcode),
+        }
+    }
 }
 
 // opcode implementation
