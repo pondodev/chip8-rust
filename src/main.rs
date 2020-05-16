@@ -76,7 +76,7 @@ struct Chip8 {
     delay_timer: u8,
     sound_timer: u8,
     keypad: [u8; 16],
-    video: [u32; SCREEN_WIDTH * SCREEN_HEIGHT],
+    video: [u32; (SCREEN_WIDTH * SCREEN_HEIGHT) + 1],
     opcode: u16
 }
 
@@ -92,7 +92,7 @@ impl Chip8 {
             delay_timer: 0,
             sound_timer: 0,
             keypad: [0; 16],
-            video: [0; SCREEN_WIDTH * SCREEN_HEIGHT],
+            video: [0; (SCREEN_WIDTH * SCREEN_HEIGHT) + 1],
             opcode: 0
         };
 
@@ -232,7 +232,7 @@ impl Chip8 {
     // CLS
     // clear screen
     fn op_00e0(&mut self) {
-        self.video = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
+        self.video = [0; (SCREEN_WIDTH * SCREEN_HEIGHT) + 1];
     }
 
     // RET
@@ -565,14 +565,14 @@ impl Chip8 {
         value /= 10;
 
         // hundreds place
-        self.memory[(self.index) as usize] = value % 10;
+        self.memory[self.index as usize] = value % 10;
     }
 
     // LD [I], Vx
     // store registers V0 -> Vx in memory starting at index
     fn op_fx55(&mut self) {
         let vx = self.get_x();
-        for i in 0..vx {
+        for i in 0..vx + 1 {
             self.memory[(self.index + i as u16) as usize] = self.registers[i as usize];
         }
     }
@@ -581,7 +581,7 @@ impl Chip8 {
     // read in values to V0 -> Vx starting a index in memory
     fn op_fx65(&mut self) {
         let vx = self.get_x();
-        for i in 0..vx {
+        for i in 0..vx + 1 {
             self.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
         }
     }
