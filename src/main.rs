@@ -1,10 +1,11 @@
 extern crate minifb;
-use minifb::{Key, Window, WindowOptions};
+use minifb::{Key, Window, WindowOptions, Scale};
 
 use std::env;
 use std::fs;
 use std::io;
 use std::io::Read;
+use std::time::SystemTime;
 use rand::Rng;
 
 fn main() {
@@ -14,9 +15,25 @@ fn main() {
     match machine.load_rom(&args[1]) {
         Err(e) => println!("error: {}", e),
         Ok(()) => {
-            let mut platform = Platform::init(SCREEN_WIDTH * PIXEL_SIZE, SCREEN_HEIGHT * PIXEL_SIZE, PIXEL_SIZE);
+            let mut platform = Platform::init(
+                SCREEN_WIDTH,
+                SCREEN_HEIGHT,
+                machine
+            );
+
+            let mut last_cycle = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
             while platform.window.is_open() {
                 // main program loop
+                platform.process_input();
+
+                let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+                let duration = current_time - last_cycle;
+                if duration > 10 {
+                    last_cycle = current_time;
+
+                    platform.machine.cycle();
+                    platform.process_video();
+                }
 
                 platform.update();
             }
@@ -28,7 +45,6 @@ fn main() {
 const PROGRAM_START_ADDRESS: usize = 0x200;
 const SCREEN_WIDTH: usize = 64;
 const SCREEN_HEIGHT: usize = 32;
-const PIXEL_SIZE: usize = 16;
 const FONT_SET_SIZE: usize = 80;
 const FONT_SET_START_ADDRESS: usize = 0x50;
 const FONT_SET: [u8; FONT_SET_SIZE] = [
@@ -86,23 +102,6 @@ impl Chip8 {
         }
 
         return machine;
-    }
-
-    // debug utilities
-    fn show_memory(&self) {
-        let step = 64;
-        for i in (0..self.memory.len()).step_by(step) {
-            for j in 0..step {
-                let mut to_print = format!("{:#X} ", self.memory[j + i]);
-                let to_print = &to_print[2..to_print.len()];
-                if to_print.chars().count() == 2 {
-                    print!("0{:width$} ", to_print, width = 2);
-                } else {
-                    print!("{:width$} ", to_print, width = 2);
-                }
-            }
-            println!();
-        }
     }
 
     // general utilities
@@ -168,7 +167,7 @@ impl Chip8 {
 
     fn cycle(&mut self) {
         // load next instruction from memory
-        let first_byte = (self.memory[self.pc as usize] << 8) as u16;
+        let first_byte = (self.memory[self.pc as usize] as u16) << 8;
         let second_byte = self.memory[(self.pc + 1) as usize] as u16;
         self.opcode = first_byte | second_byte;
 
@@ -295,7 +294,7 @@ impl Chip8 {
     // add kk to Vx
     fn op_7xkk(&mut self) {
         let (vx, kk) = self.get_x_kk();
-        self.registers[vx as usize] += kk;
+        self.registers[vx as usize] = (self.registers[vx as usize] as u16 + kk as u16) as u8;
     }
 
     // LD Vx, Vy
@@ -352,7 +351,9 @@ impl Chip8 {
             self.registers[0xF] = 0; // ...else set to 0
         }
 
-        self.registers[vx as usize] -= self.registers[vy as usize];
+        // TODO: clean
+        //self.registers[vx as usize] -= self.registers[vy as usize];
+        self.registers[vx as usize] = self.registers[vx as usize].wrapping_sub(self.registers[vy as usize]);
     }
 
     // SHR Vx
@@ -374,7 +375,9 @@ impl Chip8 {
             self.registers[0xF] = 0; // ...else set to 0
         }
 
-        self.registers[vx as usize] = self.registers[vy as usize] - self.registers[vx as usize];
+        // TODO: clean
+        //self.registers[vx as usize] = self.registers[vy as usize] - self.registers[vx as usize];
+        self.registers[vx as usize] = self.registers[vy as usize].wrapping_sub(self.registers[vx as usize]);
     }
 
     // SHL Vx {, Vy}
@@ -477,7 +480,7 @@ impl Chip8 {
     // wait for key press, store key code in Vx
     fn op_fx0a(&mut self) {
         let vx = self.get_x();
-        let mut val = &mut self.registers[vx as usize];
+        let val = &mut self.registers[vx as usize];
 
         // store key press value in vx
         if self.keypad[0x0] == 1 {
@@ -587,19 +590,21 @@ impl Chip8 {
 struct Platform {
     screen_width: usize,
     screen_height: usize,
-    pixel_size: usize,
     window: Window,
-    buffer: Vec<u32>
+    buffer: Vec<u32>,
+    machine: Chip8
 }
 
 impl Platform {
-    fn init(screen_width: usize, screen_height: usize, pixel_size: usize) -> Platform {
-        let mut b: Vec<u32> = vec![0; screen_width * screen_height];
+    fn init(screen_width: usize, screen_height: usize, machine: Chip8) -> Platform {
+        let b: Vec<u32> = vec![0; screen_width * screen_height];
+        let mut win_options = WindowOptions::default();
+        win_options.scale = Scale::X16;
         let mut w = Window::new(
             "Chip 8 Program",
             screen_width,
             screen_height,
-            WindowOptions::default()
+            win_options
         )
             .unwrap_or_else(|e | {
                 panic!("{}", e);
@@ -609,30 +614,101 @@ impl Platform {
         Platform {
             screen_width,
             screen_height,
-            pixel_size,
             window: w,
-            buffer: b
-        }
-    }
-
-    fn draw_pixel(&mut self, x: usize, y: usize) {
-        // get pixel start point
-        let x_start = x * PIXEL_SIZE;
-        let y_start = y * PIXEL_SIZE;
-        let x_end = x_start + PIXEL_SIZE;
-        let y_end = y_start + PIXEL_SIZE;
-
-        // add pixel to buffer, scaling up to pixel size
-        for i in x_start..x_end {
-            for j in y_start..y_end {
-                let index = i + (j * self.screen_width);
-                self.buffer[index] = 0xFFFFFF;
-            }
+            buffer: b,
+            machine
         }
     }
 
     fn update(&mut self) {
         self.window.update_with_buffer(&self.buffer, self.screen_width, self.screen_height)
             .unwrap();
+    }
+
+    // we will map the key inputs as such:
+    // 1 2 3 4
+    // Q W E R
+    // A S D F
+    // Z X C V
+    // this should hopefully fit enough people's needs, or at least just work for me
+    fn process_input(&mut self) {
+        // key down
+        if self.window.is_key_down(Key::Key1) {
+            self.machine.keypad[0x0] = 1;
+        } else if self.window.is_key_down(Key::Key2) {
+            self.machine.keypad[0x1] = 1;
+        } else if self.window.is_key_down(Key::Key3) {
+            self.machine.keypad[0x2] = 1;
+        } else if self.window.is_key_down(Key::Key4) {
+            self.machine.keypad[0x3] = 1;
+        } else if self.window.is_key_down(Key::Q) {
+            self.machine.keypad[0x4] = 1;
+        } else if self.window.is_key_down(Key::W) {
+            self.machine.keypad[0x5] = 1;
+        } else if self.window.is_key_down(Key::E) {
+            self.machine.keypad[0x6] = 1;
+        } else if self.window.is_key_down(Key::R) {
+            self.machine.keypad[0x7] = 1;
+        } else if self.window.is_key_down(Key::A) {
+            self.machine.keypad[0x8] = 1;
+        } else if self.window.is_key_down(Key::S) {
+            self.machine.keypad[0x9] = 1;
+        } else if self.window.is_key_down(Key::D) {
+            self.machine.keypad[0xA] = 1;
+        } else if self.window.is_key_down(Key::F) {
+            self.machine.keypad[0xB] = 1;
+        } else if self.window.is_key_down(Key::Z) {
+            self.machine.keypad[0xC] = 1;
+        } else if self.window.is_key_down(Key::X) {
+            self.machine.keypad[0xD] = 1;
+        } else if self.window.is_key_down(Key::C) {
+            self.machine.keypad[0xE] = 1;
+        } else if self.window.is_key_down(Key::V) {
+            self.machine.keypad[0xF] = 1;
+        }
+
+        // key up
+        else if self.window.is_key_released(Key::Key1) {
+            self.machine.keypad[0x0] = 0;
+        } else if self.window.is_key_released(Key::Key2) {
+            self.machine.keypad[0x1] = 0;
+        } else if self.window.is_key_released(Key::Key3) {
+            self.machine.keypad[0x2] = 0;
+        } else if self.window.is_key_released(Key::Key4) {
+            self.machine.keypad[0x3] = 0;
+        } else if self.window.is_key_released(Key::Q) {
+            self.machine.keypad[0x4] = 0;
+        } else if self.window.is_key_released(Key::W) {
+            self.machine.keypad[0x5] = 0;
+        } else if self.window.is_key_released(Key::E) {
+            self.machine.keypad[0x6] = 0;
+        } else if self.window.is_key_released(Key::R) {
+            self.machine.keypad[0x7] = 0;
+        } else if self.window.is_key_released(Key::A) {
+            self.machine.keypad[0x8] = 0;
+        } else if self.window.is_key_released(Key::S) {
+            self.machine.keypad[0x9] = 0;
+        } else if self.window.is_key_released(Key::D) {
+            self.machine.keypad[0xA] = 0;
+        } else if self.window.is_key_released(Key::F) {
+            self.machine.keypad[0xB] = 0;
+        } else if self.window.is_key_released(Key::Z) {
+            self.machine.keypad[0xC] = 0;
+        } else if self.window.is_key_released(Key::X) {
+            self.machine.keypad[0xD] = 0;
+        } else if self.window.is_key_released(Key::C) {
+            self.machine.keypad[0xE] = 0;
+        } else if self.window.is_key_released(Key::V) {
+            self.machine.keypad[0xF] = 0;
+        }
+    }
+
+    fn process_video(&mut self) {
+        for (i, pixel) in self.machine.video.iter_mut().enumerate() {
+            if *pixel > 0 {
+                // draw pixel
+                self.buffer[i] = 0xFFFFFF;
+            }
+        }
     }
 }
