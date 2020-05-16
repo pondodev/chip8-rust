@@ -166,14 +166,16 @@ impl Chip8 {
     }
 
     fn cycle(&mut self) {
-        // load next instruction from memory
-        let first_byte = (self.memory[self.pc as usize] as u16) << 8;
-        let second_byte = self.memory[(self.pc + 1) as usize] as u16;
-        self.opcode = first_byte | second_byte;
+        for _ in 0..50 {
+            // load next instruction from memory
+            let first_byte = (self.memory[self.pc as usize] as u16) << 8;
+            let second_byte = self.memory[(self.pc + 1) as usize] as u16;
+            self.opcode = first_byte | second_byte;
 
-        // instruction execution time
-        self.pc += 2;
-        self.execute_instruction();
+            // instruction execution time
+            self.pc += 2;
+            self.execute_instruction();
+        }
 
         // decrement the timers
         if self.delay_timer > 0 {
