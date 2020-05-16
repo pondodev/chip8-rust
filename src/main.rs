@@ -21,12 +21,12 @@ fn main() {
                 machine
             );
 
-            let mut last_cycle = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+            let mut last_cycle = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros();
             while platform.window.is_open() {
                 // main program loop
                 platform.process_input();
 
-                let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+                let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros();
                 let duration = current_time - last_cycle;
                 if duration > 10 {
                     last_cycle = current_time;
@@ -597,7 +597,7 @@ struct Platform {
 
 impl Platform {
     fn init(screen_width: usize, screen_height: usize, machine: Chip8) -> Platform {
-        let b: Vec<u32> = vec![0; screen_width * screen_height];
+        let b: Vec<u32> = vec![0; (screen_width * screen_height) + 1];
         let mut win_options = WindowOptions::default();
         win_options.scale = Scale::X16;
         let mut w = Window::new(
@@ -708,6 +708,9 @@ impl Platform {
             if *pixel > 0 {
                 // draw pixel
                 self.buffer[i] = 0xFFFFFF;
+            } else {
+                // erase pixel
+                self.buffer[i] = 0x000000;
             }
         }
     }
