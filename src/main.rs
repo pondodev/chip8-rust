@@ -1,3 +1,6 @@
+extern crate minifb;
+use minifb::{Key, Window, WindowOptions};
+
 use std::env;
 use std::fs;
 use std::io;
@@ -9,8 +12,15 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     match machine.load_rom(&args[1]) {
-        Ok(()) => machine.show_memory(),
-        Err(e) => println!("error: {}", e)
+        Err(e) => println!("error: {}", e),
+        Ok(()) => {
+            let mut platform = Platform::init(SCREEN_WIDTH * PIXEL_SIZE, SCREEN_HEIGHT * PIXEL_SIZE, PIXEL_SIZE);
+            while platform.window.is_open() {
+                // main program loop
+
+                platform.update();
+            }
+        },
     };
 }
 
@@ -18,6 +28,7 @@ fn main() {
 const PROGRAM_START_ADDRESS: usize = 0x200;
 const SCREEN_WIDTH: usize = 64;
 const SCREEN_HEIGHT: usize = 32;
+const PIXEL_SIZE: usize = 16;
 const FONT_SET_SIZE: usize = 80;
 const FONT_SET_START_ADDRESS: usize = 0x50;
 const FONT_SET: [u8; FONT_SET_SIZE] = [
@@ -438,13 +449,21 @@ impl Chip8 {
     // SKP Vx
     // skip next instruction if key code stored in Vx is pressed
     fn op_ex9e(&mut self) {
-        // TODO: implement
+        let vx = self.get_x();
+        let key = self.registers[vx as usize] as usize;
+        if self.keypad[key] == 1 {
+            self.pc += 2;
+        }
     }
 
     // SKNP Vx
     // skip next instruction if key code stored in Vx is not pressed
     fn op_exa1(&mut self) {
-        // TODO: implement
+        let vx = self.get_x();
+        let key = self.registers[vx as usize] as usize;
+        if self.keypad[key] != 1 {
+            self.pc += 2;
+        }
     }
 
     // LD Vx, DT
@@ -458,7 +477,44 @@ impl Chip8 {
     // wait for key press, store key code in Vx
     fn op_fx0a(&mut self) {
         let vx = self.get_x();
-        // TODO: figure out how keypad values are stored, then implement
+        let mut val = &mut self.registers[vx as usize];
+
+        // store key press value in vx
+        if self.keypad[0x0] == 1 {
+            *val = 0x0;
+        } else if self.keypad[0x1] == 1 {
+            *val = 0x1;
+        } else if self.keypad[0x2] == 1 {
+            *val = 0x2;
+        } else if self.keypad[0x3] == 1 {
+            *val = 0x3;
+        } else if self.keypad[0x4] == 1 {
+            *val = 0x4;
+        } else if self.keypad[0x5] == 1 {
+            *val = 0x5;
+        } else if self.keypad[0x6] == 1 {
+            *val = 0x6;
+        } else if self.keypad[0x7] == 1 {
+            *val = 0x7;
+        } else if self.keypad[0x8] == 1 {
+            *val = 0x8;
+        } else if self.keypad[0x9] == 1 {
+            *val = 0x9;
+        } else if self.keypad[0xA] == 1 {
+            *val = 0xA;
+        } else if self.keypad[0xB] == 1 {
+            *val = 0xB;
+        } else if self.keypad[0xC] == 1 {
+            *val = 0xC;
+        } else if self.keypad[0xD] == 1 {
+            *val = 0xD;
+        } else if self.keypad[0xE] == 1 {
+            *val = 0xE;
+        } else if self.keypad[0xF] == 1 {
+            *val = 0xF;
+        } else {
+            self.pc -= 2; // loop back to same instruction if no key was pressed
+        }
     }
 
     // LD DT, Vx
@@ -525,5 +581,58 @@ impl Chip8 {
         for i in 0..vx {
             self.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
         }
+    }
+}
+
+struct Platform {
+    screen_width: usize,
+    screen_height: usize,
+    pixel_size: usize,
+    window: Window,
+    buffer: Vec<u32>
+}
+
+impl Platform {
+    fn init(screen_width: usize, screen_height: usize, pixel_size: usize) -> Platform {
+        let mut b: Vec<u32> = vec![0; screen_width * screen_height];
+        let mut w = Window::new(
+            "Chip 8 Program",
+            screen_width,
+            screen_height,
+            WindowOptions::default()
+        )
+            .unwrap_or_else(|e | {
+                panic!("{}", e);
+            });
+        w.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+
+        Platform {
+            screen_width,
+            screen_height,
+            pixel_size,
+            window: w,
+            buffer: b
+        }
+    }
+
+    fn draw_pixel(&mut self, x: usize, y: usize) {
+        // get pixel start point
+        let x_start = x * PIXEL_SIZE;
+        let y_start = y * PIXEL_SIZE;
+        let x_end = x_start + PIXEL_SIZE;
+        let y_end = y_start + PIXEL_SIZE;
+
+        // add pixel to buffer, scaling up to pixel size
+        for i in x_start..x_end {
+            for j in y_start..y_end {
+                let index = i + (j * self.screen_width);
+                self.buffer[index] = 0xFFFFFF;
+            }
+        }
+    }
+
+    fn update(&mut self) {
+        self.window.update_with_buffer(&self.buffer, self.screen_width, self.screen_height)
+            .unwrap();
     }
 }
