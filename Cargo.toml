@@ -9,3 +9,6 @@ edition = "2018"
 [dependencies]
 rand = "0.7.3"
 minifb = "0.16.0"
+gfx = "0.16"
+gfx_window_glutin = "0.16"
+glutin = "0.8"

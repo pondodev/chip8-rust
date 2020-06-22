@@ -1,3 +1,5 @@
+mod frontend;
+
 extern crate minifb;
 use minifb::{Key, Window, WindowOptions, Scale};
 
