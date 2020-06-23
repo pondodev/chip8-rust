@@ -1,4 +1,5 @@
 mod core;
+mod colour;
 
 #[macro_use] extern crate gfx;
 
@@ -14,8 +15,13 @@ use gfx_window_glutin as gfx_glutin;
 pub type ColourFormat = gfx::format::Srgba8;
 pub type DepthFormat = gfx::format::DepthStencil;
 
-use crate::core::SCREEN_WIDTH;
-use crate::core::SCREEN_HEIGHT;
+use crate::core::MACHINE_SCREEN_WIDTH;
+use crate::core::MACHINE_SCREEN_HEIGHT;
+
+const SCREEN_MULTIPLIER: u32 = 10;
+const SCREEN_WIDTH: u32 = MACHINE_SCREEN_WIDTH as u32 * SCREEN_MULTIPLIER;
+const SCREEN_HEIGHT: u32 = MACHINE_SCREEN_HEIGHT as u32 * SCREEN_MULTIPLIER;
+const SCREEN_CLEAR_COLOUR: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
 fn main() {
     let mut machine = core::Chip8::new();
@@ -27,12 +33,42 @@ fn main() {
             let mut platform = Platform::new(
                 SCREEN_WIDTH,
                 SCREEN_HEIGHT,
-                [ Colour::new(0, 0, 0), Colour::new(255, 255, 255) ],
                 machine
             );
 
+            let white = colour::Colour::new(255, 255, 255);
+
+            // set up windowing/graphics stuffs
+            let events_loop = glutin::EventsLoop::new();
+            let builder = glutin::WindowBuilder::new()
+                .with_title("Chip8 Interpreter")
+                .with_dimensions(SCREEN_WIDTH, SCREEN_HEIGHT)
+                .with_vsync();
+
+            let (window, mut device, mut factory, mut main_colour, mut main_depth) =
+                gfx_glutin::init::<ColourFormat, DepthFormat>(builder, &events_loop);
+
+            let mut encoder: gfx::Encoder<_, _> = factory.create_command_buffer().into();
+            // read in the shaders
+            let pso = factory.create_pipeline_simple(
+                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/vertex.glsl")),
+                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/fragment.glsl")),
+                pipe::new()
+            ).unwrap();
+
+            let mut vertices: Vec<Vertex> = vec![];
+            let mut indices: Vec<u16> = vec![];
+            let (vertex_buffer, mut slice) = factory.create_vertex_buffer_with_slice(&vertices, &*indices);
+            let mut data = pipe::Data {
+                vbuf: vertex_buffer,
+                out: main_colour
+            };
+
+
             let mut last_cycle = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros();
-            'main: loop {
+            let mut running = true;
+
+            while running {
                 // main program loop
                 platform.process_input();
 
@@ -41,12 +77,24 @@ fn main() {
                 if duration > 10 {
                     last_cycle = current_time;
 
-                    platform.machine.cycle();
-                    platform.process_video();
-                }
+                    // handle window events
+                    events_loop.poll_events(|glutin::Event::WindowEvent { window_id: _, event }| {
+                        use glutin::WindowEvent::*;
+                        match event {
+                            Closed => running = false,
+                            _ => (),
+                        }
+                    });
 
-                // TODO: actually handle exiting the program
-                break 'main;
+                    platform.machine.cycle();
+
+                    // process video stuffs
+                    encoder.clear(&data.out, SCREEN_CLEAR_COLOUR);
+                    encoder.draw(&slice, &pso, &data);
+                    encoder.flush(&mut device);
+                    window.swap_buffers().unwrap();
+                    device.cleanup();
+                }
             }
         },
     };
@@ -55,7 +103,7 @@ fn main() {
 gfx_defines! {
     vertex Vertex {
         pos: [f32; 2] = "a_Pos",
-        colour: [f32; 2] = "a_Colour",
+        colour: [f32; 3] = "a_Colour",
     }
 
     pipeline pipe {
@@ -65,20 +113,18 @@ gfx_defines! {
 }
 
 struct Platform {
-    screen_width: usize,
-    screen_height: usize,
-    palette: [Colour; 2],
+    screen_width: u32,
+    screen_height: u32,
     buffer: Vec<u8>,
     machine: core::Chip8
 }
 
 impl Platform {
-    fn new(screen_width: usize, screen_height: usize, palette: [Colour; 2], machine: core::Chip8) -> Platform {
-        let buffer = vec![0; screen_height * screen_width + 1];
+    fn new(screen_width: u32, screen_height: u32, machine: core::Chip8) -> Platform {
+        let buffer = vec![0; (screen_height * screen_width) as usize + 1];
         Platform {
             screen_width,
             screen_height,
-            palette,
             buffer,
             machine
         }
@@ -92,33 +138,5 @@ impl Platform {
     // this should hopefully fit enough people's needs, or at least just work for me
     fn process_input(&mut self) {
         // TODO: implement
-    }
-
-    fn process_video(&mut self) {
-        // TODO: implement
-    }
-}
-
-pub struct Colour {
-    red: u8,
-    green: u8,
-    blue: u8
-}
-
-impl Colour {
-    pub fn new(red: u8, green: u8, blue: u8) -> Self {
-        Colour {
-            red,
-            green,
-            blue
-        }
-    }
-
-    pub fn to_array(&self) -> [f32; 3] {
-        let r = self.red as f32 / 256.0;
-        let g = self.green as f32 / 256.0;
-        let b = self.blue as f32 / 256.0;
-
-        return [r, g, b];
     }
 }

@@ -5,8 +5,8 @@ use rand::Rng;
 
 // program consts
 const PROGRAM_START_ADDRESS: usize = 0x200;
-pub const SCREEN_WIDTH: usize = 64;
-pub const SCREEN_HEIGHT: usize = 32;
+pub const MACHINE_SCREEN_WIDTH: usize = 64;
+pub const MACHINE_SCREEN_HEIGHT: usize = 32;
 const FONT_SET_SIZE: usize = 80;
 const FONT_SET_START_ADDRESS: usize = 0x50;
 const FONT_SET: [u8; FONT_SET_SIZE] = [
@@ -38,7 +38,7 @@ pub struct Chip8 {
     delay_timer: u8,
     sound_timer: u8,
     pub keypad: [u8; 16],
-    pub video: [u32; (SCREEN_WIDTH * SCREEN_HEIGHT) + 1],
+    pub video: [u32; (MACHINE_SCREEN_WIDTH * MACHINE_SCREEN_HEIGHT) + 1],
     opcode: u16
 }
 
@@ -54,7 +54,7 @@ impl Chip8 {
             delay_timer: 0,
             sound_timer: 0,
             keypad: [0; 16],
-            video: [0; (SCREEN_WIDTH * SCREEN_HEIGHT) + 1],
+            video: [0; (MACHINE_SCREEN_WIDTH * MACHINE_SCREEN_HEIGHT) + 1],
             opcode: 0
         };
 
@@ -196,7 +196,7 @@ impl Chip8 {
     // CLS
     // clear screen
     fn op_00e0(&mut self) {
-        self.video = [0; (SCREEN_WIDTH * SCREEN_HEIGHT) + 1];
+        self.video = [0; (MACHINE_SCREEN_WIDTH * MACHINE_SCREEN_HEIGHT) + 1];
     }
 
     // RET
@@ -388,8 +388,8 @@ impl Chip8 {
         let (vx, vy, n) = self.get_x_y_n();
 
         // wrap around screen
-        let x = self.registers[vx as usize] % SCREEN_WIDTH as u8;
-        let y = self.registers[vy as usize] % SCREEN_HEIGHT as u8;
+        let x = self.registers[vx as usize] % MACHINE_SCREEN_WIDTH as u8;
+        let y = self.registers[vy as usize] % MACHINE_SCREEN_HEIGHT as u8;
 
         // set VF to 0
         self.registers[0xF] = 0;
@@ -399,7 +399,7 @@ impl Chip8 {
             let sprite_byte = self.memory[(self.index + row as u16) as usize];
             for col in 0..8 {
                 let sprite_pixel = sprite_byte & (0b10000000 >> col);
-                let screen_pixel = &mut self.video[(y + row) as usize * SCREEN_WIDTH + (x + col) as usize];
+                let screen_pixel = &mut self.video[(y + row) as usize * MACHINE_SCREEN_WIDTH + (x + col) as usize];
                 if sprite_pixel > 0 {
                     // collision detection
                     if *screen_pixel == 0xFFFFFFFF {
